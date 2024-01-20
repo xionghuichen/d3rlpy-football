@@ -25,6 +25,7 @@ __all__ = [
     "compute_discrete_imitation_loss",
     "compute_deterministic_imitation_loss",
     "compute_stochastic_imitation_loss",
+    "compute_stochastic_weighted_imitation_loss"
 ]
 
 
@@ -182,3 +183,11 @@ def compute_stochastic_imitation_loss(
 ) -> torch.Tensor:
     dist = build_gaussian_distribution(policy(x))
     return F.mse_loss(dist.sample(), action)
+
+def compute_stochastic_weighted_imitation_loss(
+    policy: NormalPolicy, x: TorchObservation, action: torch.Tensor
+) -> torch.Tensor:
+    dist = build_gaussian_distribution(policy(x))
+    weighted = torch.mean(torch.abs(action), axis=-1) * 5 + 0.5
+    wmse = F.mse_loss(dist.sample(), action, reduction='none') * weighted.unsqueeze(-1)
+    return torch.mean(wmse)

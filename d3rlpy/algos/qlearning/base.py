@@ -551,7 +551,11 @@ class QLearningAlgoBase(
             if evaluators:
                 for name, evaluator in evaluators.items():
                     test_score = evaluator(self, dataset)
-                    logger.add_metric(name, test_score)
+                    if type(test_score) is dict:
+                        for k, v in test_score.items():
+                            logger.add_metric(f"eval-{name}/{k}", v)
+                    else:
+                        logger.add_metric(name, test_score)
 
             # save metrics
             metrics = logger.commit(epoch, total_step)

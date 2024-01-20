@@ -75,7 +75,7 @@ class BC(QLearningAlgoBase[BCBaseImpl, BCConfig]):
                 self._config.encoder_factory,
                 device=self._device,
             )
-        elif self._config.policy_type == "stochastic":
+        elif self._config.policy_type == "stochastic" or self._config.policy_type == "stochastic_weighted":
             imitator = create_normal_policy(
                 observation_shape,
                 action_size,

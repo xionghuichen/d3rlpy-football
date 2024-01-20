@@ -3,6 +3,9 @@ import numpy as np
 from ..interface import QLearningAlgoProtocol, StatefulTransformerAlgoProtocol
 from ..types import GymEnv
 
+
+from gfootball.env.wrappers import Simple115StateWrapper_ball_owned_player
+
 __all__ = [
     "evaluate_qlearning_with_environment",
     "evaluate_transformer_with_environment",
@@ -41,11 +44,15 @@ def evaluate_qlearning_with_environment(
         average score.
     """
     episode_rewards = []
+    wrapper_func = Simple115StateWrapper_ball_owned_player
+    wrapper = wrapper_func(env)
+    
     for _ in range(n_trials):
-        observation, _ = env.reset()
+        step = 0
+        observation = env.reset()
         episode_reward = 0.0
-
         while True:
+            observation = wrapper.observation(observation)
             # take action
             if np.random.random() < epsilon:
                 action = env.action_space.sample()
@@ -62,13 +69,17 @@ def evaluate_qlearning_with_environment(
                     )
                 action = algo.predict(observation)[0]
 
-            observation, reward, done, truncated, _ = env.step(action)
+            observation, reward, done, info = env.step(action)
             episode_reward += float(reward)
-
-            if done or truncated:
+            step += 1
+            if done or step > 3000:
                 break
         episode_rewards.append(episode_reward)
-    return float(np.mean(episode_rewards))
+    return {
+            "rew": float(np.mean(episode_rewards)), 
+            "win": float(np.mean(np.array(episode_rewards)>0)), 
+            "draw": float(np.mean(np.array(episode_rewards)==0)), 
+            "lose": float(np.mean(np.array(episode_rewards)<0))}
 
 
 def evaluate_transformer_with_environment(

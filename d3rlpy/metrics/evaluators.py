@@ -496,6 +496,26 @@ class CompareDiscreteActionMatchEvaluator(EvaluatorProtocol):
         return float(np.mean(total_matches))
 
 
+class DatasetErrorEvaluator(EvaluatorProtocol):
+    def __init__(self, dataset: ReplayBuffer):
+        self._dataset = dataset
+    
+    def __call__(
+        self, algo: QLearningAlgoProtocol, dataset: ReplayBuffer
+    ) -> float:
+        episodes = self._dataset.episodes
+        res_array = []
+        weighted_mse = []
+        for episode in episodes:
+            for batch in make_batches(episode, WINDOW_SIZE * 10, self._dataset.transition_picker):
+                actions = algo.predict(batch.observations)
+                res_array.append(np.mean(np.abs(batch.actions - actions)))
+                weighted_mse.append(np.mean(np.abs(batch.actions - actions)[np.mean(np.abs(batch.actions), axis=-1) != 0]))
+                
+        return { "mae": np.mean(res_array), "mae_nzero": np.mean(weighted_mse) }
+                
+        
+    
 class EnvironmentEvaluator(EvaluatorProtocol):
     r"""Action matches between algorithms.
 

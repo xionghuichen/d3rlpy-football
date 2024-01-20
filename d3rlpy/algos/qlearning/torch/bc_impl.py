@@ -13,6 +13,7 @@ from ....models.torch import (
     compute_deterministic_imitation_loss,
     compute_discrete_imitation_loss,
     compute_stochastic_imitation_loss,
+    compute_stochastic_weighted_imitation_loss
 )
 from ....torch_utility import Modules, TorchMiniBatch
 from ....types import Shape, TorchObservation
@@ -99,7 +100,8 @@ class BCImpl(BCBaseImpl):
         self._policy_type = policy_type
 
     def inner_predict_best_action(self, x: TorchObservation) -> torch.Tensor:
-        return self._modules.imitator(x).squashed_mu
+        res = self._modules.imitator(x)
+        return torch.normal(res.squashed_mu, torch.exp(res.logstd))
 
     def compute_loss(
         self, obs_t: TorchObservation, act_t: torch.Tensor
@@ -110,6 +112,10 @@ class BCImpl(BCBaseImpl):
             )
         elif self._policy_type == "stochastic":
             return compute_stochastic_imitation_loss(
+                self._modules.imitator, obs_t, act_t
+            )
+        elif self._policy_type == "stochastic_weighted":
+            return compute_stochastic_weighted_imitation_loss(
                 self._modules.imitator, obs_t, act_t
             )
         else:

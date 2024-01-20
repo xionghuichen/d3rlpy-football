@@ -56,6 +56,7 @@ class FileAdapter(LoggerAdapter):
         self, epoch: int, step: int, name: str, value: float
     ) -> None:
         path = os.path.join(self._logdir, f"{name}.csv")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a") as f:
             print(f"{epoch},{step},{value}", file=f)
 

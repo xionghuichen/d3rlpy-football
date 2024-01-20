@@ -216,6 +216,8 @@ class CQLImpl(SACImpl):
 class DiscreteCQLLoss(DQNLoss):
     td_loss: torch.Tensor
     conservative_loss: torch.Tensor
+    values: torch.Tensor
+    data_values: torch.Tensor
 
 
 class DiscreteCQLImpl(DoubleDQNImpl):
@@ -256,7 +258,7 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         one_hot = F.one_hot(act_t.view(-1), num_classes=self.action_size)
         data_values = (values * one_hot).sum(dim=1, keepdim=True)
 
-        return (logsumexp - data_values).mean()
+        return (logsumexp - data_values).mean(), values.mean(), data_values.mean()
 
     def compute_loss(
         self,
@@ -264,10 +266,11 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         q_tpn: torch.Tensor,
     ) -> DiscreteCQLLoss:
         td_loss = super().compute_loss(batch, q_tpn).loss
-        conservative_loss = self._compute_conservative_loss(
+        conservative_loss, values, data_values= self._compute_conservative_loss(
             batch.observations, batch.actions.long()
         )
         loss = td_loss + self._alpha * conservative_loss
         return DiscreteCQLLoss(
-            loss=loss, td_loss=td_loss, conservative_loss=conservative_loss
+            loss=loss, td_loss=td_loss, conservative_loss=conservative_loss, 
+            values=values, data_values=data_values,
         )

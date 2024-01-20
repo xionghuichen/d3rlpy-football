@@ -113,7 +113,6 @@ class LearnableConfig(DynamicConfig):
                 boolean and True, ``cuda:0`` will be used. If the value is
                 integer, ``cuda:<device>`` will be used. If the value is string
                 in torch device style, the specified device will be used.
-
         Returns:
             algorithm object.
         """
