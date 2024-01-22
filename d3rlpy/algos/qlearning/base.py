@@ -428,7 +428,8 @@ class QLearningAlgoBase(
         evaluators: Optional[Dict[str, EvaluatorProtocol]] = None,
         callback: Optional[Callable[[Self, int, int], None]] = None,
         epoch_callback: Optional[Callable[[Self, int, int], None]] = None,
-        enable_ddp: bool = False,
+        enable_ddp: bool = False, 
+        
     ) -> Generator[Tuple[int, Dict[str, float]], None, None]:
         """Iterate over epochs steps to train with the given dataset. At each
         iteration algo methods and properties can be changed or queried.

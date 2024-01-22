@@ -47,16 +47,17 @@ class TensorboardAdapter(LoggerAdapter):
     def write_metric(
         self, epoch: int, step: int, name: str, value: float
     ) -> None:
-        self._writer.add_scalar(f"metrics/{name}", value, epoch)
+        self._writer.add_scalar(f"{name}", value, epoch)
         self._metrics[name] = value
 
     def after_write_metric(self, epoch: int, step: int) -> None:
-        self._writer.add_hparams(
-            self._params,
-            self._metrics,
-            name=self._experiment_name,
-            global_step=epoch,
-        )
+        pass
+        # self._writer.add_hparams(
+        #     self._params,
+        #     self._metrics,
+        #     name=self._experiment_name,
+        #     global_step=epoch,
+        # )
 
     def save_model(self, epoch: int, algo: SaveProtocol) -> None:
         pass

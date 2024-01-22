@@ -188,6 +188,14 @@ def compute_stochastic_weighted_imitation_loss(
     policy: NormalPolicy, x: TorchObservation, action: torch.Tensor
 ) -> torch.Tensor:
     dist = build_gaussian_distribution(policy(x))
-    weighted = torch.mean(torch.abs(action), axis=-1) * 5 + 0.5
-    wmse = F.mse_loss(dist.sample(), action, reduction='none') * weighted.unsqueeze(-1)
+    wmse = 0
+    # TODO: avoid hard code on action space
+    for split_list in [[0,1], [2]]:
+        weighted = torch.mean(torch.abs(action[:, split_list]), axis=-1) * 5 + 0.5
+        wmse += torch.mean(F.mse_loss(dist.sample()[:, split_list], action[:, split_list], reduction='none') * weighted.unsqueeze(-1))
+    # for ball prediction
+    split_list = [3]
+    weighted = torch.mean(torch.abs(action[:, split_list]), axis=-1) * 5 + 0.5
+    weighted *= torch.abs(action[:, 2]) 
+    wmse += torch.mean(F.mse_loss(dist.sample()[:, split_list], action[:, split_list], reduction='none') * weighted.unsqueeze(-1))
     return torch.mean(wmse)

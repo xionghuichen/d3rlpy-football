@@ -1,5 +1,5 @@
 import dataclasses
-
+from typing import Union, Optional
 from ...base import DeviceArg, LearnableConfig, register_learnable
 from ...constants import ActionSpace
 from ...models.builders import (
@@ -53,6 +53,8 @@ class BCConfig(LearnableConfig):
     batch_size: int = 100
     learning_rate: float = 1e-3
     policy_type: str = "deterministic"
+    action_min: Optional[list] = None
+    action_max: Optional[list] = None
     optim_factory: OptimizerFactory = make_optimizer_field()
     encoder_factory: EncoderFactory = make_encoder_field()
 
@@ -65,8 +67,9 @@ class BCConfig(LearnableConfig):
 
 
 class BC(QLearningAlgoBase[BCBaseImpl, BCConfig]):
+
     def inner_create_impl(
-        self, observation_shape: Shape, action_size: int
+        self, observation_shape: Shape, action_size: int,
     ) -> None:
         if self._config.policy_type == "deterministic":
             imitator = create_deterministic_policy(
@@ -84,6 +87,17 @@ class BC(QLearningAlgoBase[BCBaseImpl, BCConfig]):
                 max_logstd=15.0,
                 device=self._device,
             )
+        elif self._config.policy_type == "stochastic_weighted_multi_head":
+            imitator = create_normal_policy(
+                observation_shape,
+                action_size,
+                self._config.encoder_factory,
+                min_logstd=-4.0,
+                max_logstd=-1,
+                device=self._device,
+                use_std_parameter=True,
+                multi_head=True
+            )
         else:
             raise ValueError(f"invalid policy_type: {self._config.policy_type}")
 
@@ -99,6 +113,8 @@ class BC(QLearningAlgoBase[BCBaseImpl, BCConfig]):
             modules=modules,
             policy_type=self._config.policy_type,
             device=self._device,
+            action_min=self._config.action_min,
+            action_max=self._config.action_max,
         )
 
     def get_action_type(self) -> ActionSpace:

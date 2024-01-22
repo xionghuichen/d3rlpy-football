@@ -504,15 +504,26 @@ class DatasetErrorEvaluator(EvaluatorProtocol):
         self, algo: QLearningAlgoProtocol, dataset: ReplayBuffer
     ) -> float:
         episodes = self._dataset.episodes
-        res_array = []
-        weighted_mse = []
+        res_dict ={
+            'zone': [[], []],
+            'own_the_ball': [[], []],
+            'ball_direction': [[], []],
+        }
         for episode in episodes:
             for batch in make_batches(episode, WINDOW_SIZE * 10, self._dataset.transition_picker):
                 actions = algo.predict(batch.observations)
-                res_array.append(np.mean(np.abs(batch.actions - actions)))
-                weighted_mse.append(np.mean(np.abs(batch.actions - actions)[np.mean(np.abs(batch.actions), axis=-1) != 0]))
-                
-        return { "mae": np.mean(res_array), "mae_nzero": np.mean(weighted_mse) }
+                res_dict['zone'][0].append(np.mean(np.abs(batch.actions[:, :2] - actions[:, :2])))
+                res_dict['own_the_ball'][0].append(np.mean(np.abs(batch.actions[:, 2] - actions[:, 2])))
+                res_dict['zone'][1].append(np.mean(np.abs(batch.actions[:, :2] - actions[:, :2])[np.mean(np.abs(batch.actions[:, :2]), axis=-1) != 0]))
+                res_dict['own_the_ball'][1].append(np.mean(np.abs(batch.actions[:, 2] - actions[:, 2])[np.abs(batch.actions[:, 2]) != 0]))
+                res_dict['ball_direction'][0].append(np.mean(np.abs(batch.actions[:, 3] - actions[:, 3])[np.abs(batch.actions[:, 2]) != 0]))
+                res_dict['ball_direction'][1].append(np.mean(np.abs(batch.actions[:, 3] - actions[:, 3])[np.logical_and(np.abs(batch.actions[:, 2]) != 0, np.abs(batch.actions[:, 3]) != 0)]))
+
+        flat_res_dict = {}
+        for k, v in res_dict.items():
+            flat_res_dict[k] = np.nanmean(v[0])
+            flat_res_dict[k + '_nzero'] = np.nanmean(v[1])
+        return flat_res_dict
                 
         
     

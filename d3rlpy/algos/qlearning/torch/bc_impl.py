@@ -1,6 +1,6 @@
 import dataclasses
 from abc import ABCMeta, abstractmethod
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 import torch
 from torch.optim import Optimizer
@@ -90,6 +90,8 @@ class BCImpl(BCBaseImpl):
         modules: BCModules,
         policy_type: str,
         device: str,
+        action_min: Optional[list],
+        action_max: Optional[list],
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -98,25 +100,42 @@ class BCImpl(BCBaseImpl):
             device=device,
         )
         self._policy_type = policy_type
+        # useless for now, d3rlpy already implemented this in base class.
+        if action_min is not None and action_max is not None:
+            self.action_min = torch.tensor(action_min).to(device)
+            self.action_max = torch.tensor(action_max).to(device)
+            self.action_shift = (self.action_max + self.action_min) / 2
+            self.action_scale = (self.action_max - self.action_min) / 2
+        else:
+            self.action_shift =  torch.tensor(0).to(device)
+            self.action_scale = torch.tensor(1).to(device)
 
+    def inner_sample_action(self, x: TorchObservation) -> torch.Tensor:
+        res = self._modules.imitator(x)
+        norm_acs = torch.normal(res.squashed_mu, torch.exp(res.logstd)).sample()
+        return norm_acs * self.action_scale + self.action_shift
+    
     def inner_predict_best_action(self, x: TorchObservation) -> torch.Tensor:
         res = self._modules.imitator(x)
-        return torch.normal(res.squashed_mu, torch.exp(res.logstd))
+        norm_acs = res.squashed_mu
+        return norm_acs * self.action_scale + self.action_shift
 
     def compute_loss(
         self, obs_t: TorchObservation, act_t: torch.Tensor
     ) -> torch.Tensor:
+        
+        norm_act_t = (act_t - self.action_shift) / self.action_scale
         if self._policy_type == "deterministic":
             return compute_deterministic_imitation_loss(
-                self._modules.imitator, obs_t, act_t
+                self._modules.imitator, obs_t, norm_act_t
             )
         elif self._policy_type == "stochastic":
             return compute_stochastic_imitation_loss(
-                self._modules.imitator, obs_t, act_t
+                self._modules.imitator, obs_t, norm_act_t
             )
-        elif self._policy_type == "stochastic_weighted":
+        elif self._policy_type == "stochastic_weighted" or self._policy_type == 'stochastic_weighted_multi_head':
             return compute_stochastic_weighted_imitation_loss(
-                self._modules.imitator, obs_t, act_t
+                self._modules.imitator, obs_t, norm_act_t
             )
         else:
             raise ValueError(f"invalid policy_type: {self._policy_type}")

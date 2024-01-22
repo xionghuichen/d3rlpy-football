@@ -14,6 +14,7 @@ __all__ = [
     "DeterministicPolicy",
     "DeterministicResidualPolicy",
     "NormalPolicy",
+    "MultiHeadNormalPolicy",
     "CategoricalPolicy",
     "build_gaussian_distribution",
     "build_squashed_gaussian_distribution",
@@ -134,7 +135,60 @@ class NormalPolicy(Policy):
             assert isinstance(self._logstd, nn.Linear)
             logstd = self._logstd(h)
             clipped_logstd = logstd.clamp(self._min_logstd, self._max_logstd)
+        return ActionOutput(mu, torch.tanh(mu), clipped_logstd)
 
+
+class MultiHeadNormalPolicy(Policy):
+    _encoder: Encoder
+    _action_size: int
+    _min_logstd: float
+    _max_logstd: float
+    _use_std_parameter: bool
+    _mu: nn.Linear
+    _logstd: Union[nn.Linear, nn.Parameter]
+
+    def __init__(
+        self,
+        encoder: Encoder,
+        hidden_size: int,
+        action_size: int,
+        min_logstd: float,
+        max_logstd: float,
+        use_std_parameter: bool,
+    ):
+        super().__init__()
+        self._action_size = action_size
+        self._encoder = encoder
+        self._min_logstd = min_logstd
+        self._max_logstd = max_logstd
+        self._use_std_parameter = use_std_parameter
+        # TODO: remove these hard coded values
+        self._mu_zone = nn.Linear(hidden_size, 2)
+        self._mu_ball = nn.Linear(hidden_size, 1)
+        self._mu_ball_dir = nn.Linear(hidden_size, 1)
+    
+        if use_std_parameter:
+            initial_logstd = torch.zeros(1, action_size, dtype=torch.float32)
+            self._logstd = nn.Parameter(initial_logstd)
+        else:
+            self._logstd = nn.Linear(hidden_size, action_size)
+
+    def forward(self, x: TorchObservation, *args: Any) -> ActionOutput:
+        mu1 = self._mu_zone(self._encoder(x))
+        mu2 = self._mu_ball(self._encoder(x))
+        mu3 = self._mu_ball_dir(self._encoder(x))
+        
+
+        if self._use_std_parameter:
+            assert isinstance(self._logstd, nn.Parameter)
+            logstd = torch.sigmoid(self._logstd)
+            base_logstd = self._max_logstd - self._min_logstd
+            clipped_logstd = self._min_logstd + logstd * base_logstd
+        else:
+            assert isinstance(self._logstd, nn.Linear)
+            logstd = self._logstd(h)
+            clipped_logstd = logstd.clamp(self._min_logstd, self._max_logstd)
+        mu = torch.cat([mu1, mu2, mu3], dim=1)
         return ActionOutput(mu, torch.tanh(mu), clipped_logstd)
 
 
