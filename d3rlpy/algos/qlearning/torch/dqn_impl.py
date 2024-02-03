@@ -63,7 +63,7 @@ class DQNImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
         self._modules.optim.zero_grad()
 
         q_tpn = self.compute_target(batch)
-
+        q_tpn = torch.clamp(q_tpn, -1.0/(1-self._gamma), 1.0/(1-self._gamma))
         loss = self.compute_loss(batch, q_tpn)
 
         loss.loss.backward()

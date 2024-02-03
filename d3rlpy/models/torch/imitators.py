@@ -191,7 +191,7 @@ def compute_stochastic_weighted_imitation_loss(
     wmse = 0
     # TODO: avoid hard code on action space
     for split_list in [[0,1], [2]]:
-        weighted = torch.mean(torch.abs(action[:, split_list]), axis=-1) * 5 + 0.5
+        weighted = torch.mean(torch.abs(action[:, split_list]), axis=-1) * 10 + 0.5
         wmse += torch.mean(F.mse_loss(dist.sample()[:, split_list], action[:, split_list], reduction='none') * weighted.unsqueeze(-1))
     # for ball prediction
     split_list = [3]

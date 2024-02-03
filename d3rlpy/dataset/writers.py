@@ -377,15 +377,10 @@ class ExperienceWriter:
 
         # append terminal state if necessary
         if terminated:
-            self._buffer.append(
-                self._active_episode,
-                self._active_episode.transition_count - 1,
-            )
+            self._buffer.append(self._active_episode,  self._active_episode.transition_count - 1)
 
         # prepare next active episode
-        self._active_episode = _ActiveEpisode(
-            self._preprocessor,
-            cache_size=self._cache_size,
+        self._active_episode = _ActiveEpisode(self._preprocessor, cache_size=self._cache_size,
             observation_signature=self._observation_signature,
             action_signature=self._action_signature,
             reward_signature=self._reward_signature,

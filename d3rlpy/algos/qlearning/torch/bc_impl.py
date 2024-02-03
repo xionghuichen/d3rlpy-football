@@ -112,7 +112,7 @@ class BCImpl(BCBaseImpl):
 
     def inner_sample_action(self, x: TorchObservation) -> torch.Tensor:
         res = self._modules.imitator(x)
-        norm_acs = torch.normal(res.squashed_mu, torch.exp(res.logstd)).sample()
+        norm_acs = torch.normal(res.squashed_mu, torch.exp(res.logstd))
         return norm_acs * self.action_scale + self.action_shift
     
     def inner_predict_best_action(self, x: TorchObservation) -> torch.Tensor:

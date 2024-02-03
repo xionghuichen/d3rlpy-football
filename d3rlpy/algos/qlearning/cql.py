@@ -14,7 +14,7 @@ from ...models.optimizers import OptimizerFactory, make_optimizer_field
 from ...models.q_functions import QFunctionFactory, make_q_func_field
 from ...types import Shape
 from .base import QLearningAlgoBase
-from .torch.cql_impl import CQLImpl, CQLModules, DiscreteCQLImpl
+from .torch.cql_impl import CQLImpl, CQLModules, DiscreteCQLImpl, DiscCQLModules
 from .torch.dqn_impl import DQNModules
 
 __all__ = ["CQLConfig", "CQL", "DiscreteCQLConfig", "DiscreteCQL"]
@@ -260,11 +260,15 @@ class DiscreteCQLConfig(LearnableConfig):
     optim_factory: OptimizerFactory = make_optimizer_field()
     encoder_factory: EncoderFactory = make_encoder_field()
     q_func_factory: QFunctionFactory = make_q_func_field()
+    alpha_optim_factory: OptimizerFactory = make_optimizer_field()
     batch_size: int = 32
     gamma: float = 0.99
     n_critics: int = 1
     target_update_interval: int = 8000
     alpha: float = 1.0
+    target_value: float=1.0,
+    initial_alpha: float=1.0
+    alpha_learning_rate: float = 1e-4
 
     def create(self, device: DeviceArg = False) -> "DiscreteCQL":
         return DiscreteCQL(self, device)
@@ -278,6 +282,17 @@ class DiscreteCQL(QLearningAlgoBase[DiscreteCQLImpl, DiscreteCQLConfig]):
     def inner_create_impl(
         self, observation_shape: Shape, action_size: int
     ) -> None:
+        log_alpha = create_parameter(
+            (1, 1), math.log(self._config.initial_alpha), device=self._device
+        )
+        if self._config.alpha_learning_rate > 0:
+            alpha_optim = self._config.alpha_optim_factory.create(
+                log_alpha.named_modules(), lr=self._config.alpha_learning_rate
+            )
+        else:
+            alpha_optim = None
+
+
         q_funcs, q_func_forwarder = create_discrete_q_function(
             observation_shape,
             action_size,
@@ -299,10 +314,12 @@ class DiscreteCQL(QLearningAlgoBase[DiscreteCQLImpl, DiscreteCQLConfig]):
             q_funcs.named_modules(), lr=self._config.learning_rate
         )
 
-        modules = DQNModules(
+        modules = DiscCQLModules(
             q_funcs=q_funcs,
             targ_q_funcs=targ_q_funcs,
             optim=optim,
+            alpha_optim=alpha_optim,
+            log_alpha=log_alpha
         )
 
         self._impl = DiscreteCQLImpl(
@@ -315,6 +332,7 @@ class DiscreteCQL(QLearningAlgoBase[DiscreteCQLImpl, DiscreteCQLConfig]):
             gamma=self._config.gamma,
             alpha=self._config.alpha,
             device=self._device,
+            target_value=self._config.target_value,
         )
 
     def get_action_type(self) -> ActionSpace:

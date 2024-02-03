@@ -14,6 +14,7 @@ from ....models.torch import (
     get_parameter,
 )
 from ....torch_utility import (
+    Modules,
     TorchMiniBatch,
     expand_and_repeat_recursively,
     flatten_left_recursively,
@@ -22,12 +23,23 @@ from ....types import Shape, TorchObservation
 from .ddpg_impl import DDPGBaseCriticLoss
 from .dqn_impl import DoubleDQNImpl, DQNLoss, DQNModules
 from .sac_impl import SACImpl, SACModules
-
+# import pick_value_by_action
+from d3rlpy.models.torch.q_functions.utility import pick_value_by_action
+from torch import nn
 __all__ = ["CQLImpl", "DiscreteCQLImpl", "CQLModules", "DiscreteCQLLoss"]
 
 
 @dataclasses.dataclass(frozen=True)
 class CQLModules(SACModules):
+    log_alpha: Parameter
+    alpha_optim: Optional[Optimizer]
+
+
+@dataclasses.dataclass(frozen=True)
+class DiscCQLModules(Modules):
+    q_funcs: nn.ModuleList
+    targ_q_funcs: nn.ModuleList
+    optim: Optimizer
     log_alpha: Parameter
     alpha_optim: Optional[Optimizer]
 
@@ -217,7 +229,11 @@ class DiscreteCQLLoss(DQNLoss):
     td_loss: torch.Tensor
     conservative_loss: torch.Tensor
     values: torch.Tensor
+    targeted_conservative_loss: torch.Tensor
     data_values: torch.Tensor
+    clipped_alpha: torch.Tensor
+    value_max: torch.Tensor
+    value_min: torch.Tensor
 
 
 class DiscreteCQLImpl(DoubleDQNImpl):
@@ -233,6 +249,7 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         target_update_interval: int,
         gamma: float,
         alpha: float,
+        target_value: float,
         device: str,
     ):
         super().__init__(
@@ -246,19 +263,34 @@ class DiscreteCQLImpl(DoubleDQNImpl):
             device=device,
         )
         self._alpha = alpha
+        self._target_value = target_value
 
     def _compute_conservative_loss(
         self, obs_t: TorchObservation, act_t: torch.Tensor
     ) -> torch.Tensor:
         # compute logsumexp
         values = self._q_func_forwarder.compute_expected_q(obs_t)
-        logsumexp = torch.logsumexp(values, dim=1, keepdim=True)
+        
+        # prob = torch.softmax(torch.clamp(values, -5, 5), dim=1).detach()
+        # logsumexp = torch.logsumexp(torch.log(prob+1e-6) + values, dim=1, keepdim=True)
+        max_action_Q = values.argmax(dim=1, keepdim=True)
+        logsumexp = pick_value_by_action(values, max_action_Q, keepdim=True)
+        # logsumexp = self._q_func_forwarder.compute_target(obs_t, max_action_Q)
+        # logsumexp = torch.log(torch.sum(prob * torch.exp(values), dim=1, keepdim=True))
 
         # estimate action-values under data distribution
         one_hot = F.one_hot(act_t.view(-1), num_classes=self.action_size)
         data_values = (values * one_hot).sum(dim=1, keepdim=True)
 
-        return (logsumexp - data_values).mean(), values.mean(), data_values.mean()
+        return (logsumexp - data_values).mean(), values, data_values.mean()
+
+    def update_alpha(self, conservative_loss: torch.Tensor) -> None:
+        assert self._modules.alpha_optim
+        self._modules.alpha_optim.zero_grad()
+        # the original implementation does scale the loss value
+        loss = -conservative_loss
+        loss.backward(retain_graph=True)
+        self._modules.alpha_optim.step()
 
     def compute_loss(
         self,
@@ -267,10 +299,33 @@ class DiscreteCQLImpl(DoubleDQNImpl):
     ) -> DiscreteCQLLoss:
         td_loss = super().compute_loss(batch, q_tpn).loss
         conservative_loss, values, data_values= self._compute_conservative_loss(
-            batch.observations, batch.actions.long()
-        )
-        loss = td_loss + self._alpha * conservative_loss
+            batch.observations, batch.actions.long())
+
+
+        if self._target_value < 0:
+            clipped_alpha = self._alpha
+            targeted_conservative_loss = clipped_alpha * conservative_loss
+        else:
+            # clip for stability
+            if self._modules.alpha_optim:
+                log_alpha = get_parameter(self._modules.log_alpha)
+                # 如果alpha太小了，说明此时conservative_loss已经很小了，策略并没有过拟合Q的风险，所以不需要再训练alpha了
+                clipped_alpha = log_alpha.exp().clamp(0, 1e6)[0][0]
+                # gap = torch.abs(conservative_loss - self._target_value)
+                targeted_conservative_loss =  clipped_alpha * (conservative_loss - self._target_value)
+                if self._modules.alpha_optim:
+                    self.update_alpha(targeted_conservative_loss)
+            else:
+                clipped_alpha = self._alpha
+                
+                targeted_conservative_loss = clipped_alpha * torch.square(conservative_loss - self._target_value)
+        loss = td_loss *0 + targeted_conservative_loss
+
+            
         return DiscreteCQLLoss(
             loss=loss, td_loss=td_loss, conservative_loss=conservative_loss, 
-            values=values, data_values=data_values,
+            values=values.mean(), data_values=data_values,
+            value_max=values.max(), value_min=values.min(),
+            targeted_conservative_loss=targeted_conservative_loss,
+            clipped_alpha=clipped_alpha
         )

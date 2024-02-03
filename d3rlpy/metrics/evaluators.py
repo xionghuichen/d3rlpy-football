@@ -11,7 +11,7 @@ from ..dataset import (
 )
 from ..interface import QLearningAlgoProtocol
 from ..types import GymEnv
-from .utility import evaluate_qlearning_with_environment
+from .utility import evaluate_qlearning_with_environment, evaluate_qlearning_with_img_obs_environment
 
 __all__ = [
     "EvaluatorProtocol",
@@ -555,17 +555,34 @@ class EnvironmentEvaluator(EvaluatorProtocol):
         env: GymEnv,
         n_trials: int = 10,
         epsilon: float = 0.0,
+        obs_type: str = 'raw',
+        update_stack_obs=None,
+        stack_obs_len=None
     ):
         self._env = env
         self._n_trials = n_trials
         self._epsilon = epsilon
+        self._obs_type = obs_type
+        self.update_stack_obs = update_stack_obs
+        self.stack_obs_len = stack_obs_len
 
     def __call__(
         self, algo: QLearningAlgoProtocol, dataset: ReplayBuffer
     ) -> float:
-        return evaluate_qlearning_with_environment(
-            algo=algo,
-            env=self._env,
-            n_trials=self._n_trials,
-            epsilon=self._epsilon,
-        )
+        if self._obs_type == 'raw':
+            return evaluate_qlearning_with_environment(
+                algo=algo,
+                env_list=self._env,
+                n_trials=self._n_trials,
+                epsilon=self._epsilon,
+            )
+        elif self._obs_type == 'imginary_obs':
+            return evaluate_qlearning_with_img_obs_environment(
+                algo=algo,
+                env_list=self._env,
+                n_trials=self._n_trials,
+                epsilon=self._epsilon,
+                update_stack_obs=self.update_stack_obs,
+                stack_obs_len=self.stack_obs_len,
+            )
+            
